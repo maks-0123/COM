@@ -1,0 +1,19 @@
+# Секреты — никогда не коммитить
+keys/
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+
+# Зависимости и сборка
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+
+# Временные файлы Office и macOS
+~$*
+.DS_Store

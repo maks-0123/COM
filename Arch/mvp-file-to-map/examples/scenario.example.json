@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "site": {
+    "id": "demo-plant",
+    "name": "Demo plant (placeholder origin, replace with your site)",
+    "coordinateSystem": "local",
+    "origin": { "lat": 55.7, "lon": 37.6 },
+    "rotationDeg": 0,
+    "basemap": { "type": "osm" }
+  },
+  "stations": [
+    { "id": "bs-1", "name": "BS-1 Workshop A", "position": { "x": 0, "y": 0 }, "heightM": 6 },
+    { "id": "bs-2", "name": "BS-2 Warehouse", "position": { "x": 200, "y": 0 }, "heightM": 8 },
+    { "id": "bs-3", "name": "BS-3 Loading dock", "position": { "x": 100, "y": 150 }, "heightM": 6 }
+  ],
+  "carts": [
+    { "id": "cart-01", "name": "Cart 01", "type": "forklift" },
+    { "id": "cart-02", "name": "Cart 02", "type": "tugger", "color": "#0f766e" }
+  ],
+  "fixes": [
+    { "cartId": "cart-01", "ts": "2026-10-28T09:00:00Z", "position": { "x": 20, "y": 30 }, "accuracyM": 14, "method": "rssi-multilateration", "stationsUsed": ["bs-1", "bs-2", "bs-3"], "truth": { "x": 18, "y": 31 } },
+    { "cartId": "cart-02", "ts": "2026-10-28T09:00:00Z", "position": { "x": 180, "y": 20 }, "accuracyM": 22, "method": "rssi-multilateration", "stationsUsed": ["bs-1", "bs-2", "bs-3"] },
+    { "cartId": "cart-01", "ts": "2026-10-28T09:00:01Z", "position": { "x": 22, "y": 31 }, "accuracyM": 13, "method": "rssi-multilateration", "speedMps": 2.2, "headingDeg": 63, "truth": { "x": 20, "y": 32 } },
+    { "cartId": "cart-02", "ts": "2026-10-28T09:00:01Z", "position": { "x": 178, "y": 22 }, "accuracyM": 21, "method": "rssi-multilateration", "speedMps": 2.8 },
+    { "cartId": "cart-01", "ts": "2026-10-28T09:00:02Z", "position": { "x": 24, "y": 32 }, "accuracyM": 13, "method": "rssi-multilateration", "speedMps": 2.2, "headingDeg": 63, "truth": { "x": 22, "y": 33 } },
+    { "cartId": "cart-02", "ts": "2026-10-28T09:00:02Z", "position": { "x": 176, "y": 24 }, "accuracyM": 85, "method": "ecid-ta", "stationsUsed": ["bs-2", "bs-3"] },
+    { "cartId": "cart-01", "ts": "2026-10-28T09:00:03Z", "position": { "x": 26, "y": 33 }, "accuracyM": 12, "method": "rssi-multilateration", "speedMps": 2.2, "headingDeg": 63, "truth": { "x": 24, "y": 34 } },
+    { "cartId": "cart-02", "ts": "2026-10-28T09:00:03Z", "position": { "x": 200, "y": 0 }, "accuracyM": 300, "method": "cell-id", "stationsUsed": ["bs-2"] }
+  ]
+}
