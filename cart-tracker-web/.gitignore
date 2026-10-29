@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Подложка карты собирается скриптом scripts/build-basemap.sh
+public/basemap/
