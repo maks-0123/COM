@@ -3,12 +3,10 @@ import { leafletLayer } from 'protomaps-leaflet'
 import { useEffect } from 'react'
 import { useMap } from 'react-leaflet'
 
-// Собственная подложка: карта рисуется прямо в браузере из файла
-// public/basemap/site.pmtiles (его собирает scripts/build-basemap.sh).
+// Собственная подложка: карта рисуется прямо в браузере из файла .pmtiles
+// (его собирает scripts/build-basemap.sh, путь задаёт site.basemap.url).
 // Никаких внешних сервисов и ключей — файл лежит рядом с сайтом.
-const SITE_BASEMAP_URL = '/basemap/site.pmtiles'
-
-export function SiteBasemap() {
+export function SiteBasemap({ url }: { url: string }) {
 	const map = useMap()
 
 	useEffect(() => {
@@ -16,7 +14,7 @@ export function SiteBasemap() {
 		// дороги и здания не спорят по цвету с точками тележек.
 		// lang 'ru' — подписи улиц на русском, где они есть в OSM.
 		const layer = leafletLayer({
-			url: SITE_BASEMAP_URL,
+			url,
 			flavor: 'light',
 			lang: 'ru',
 		}) as unknown as Layer
@@ -26,7 +24,7 @@ export function SiteBasemap() {
 		return () => {
 			layer.remove()
 		}
-	}, [map])
+	}, [map, url])
 
 	return null
 }

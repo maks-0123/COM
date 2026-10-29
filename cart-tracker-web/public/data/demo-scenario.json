@@ -2,11 +2,11 @@
 	"schemaVersion": 1,
 	"site": {
 		"id": "demo-plant",
-		"name": "Demo plant (placeholder origin, replace with your site)",
+		"name": "Демо-площадка",
 		"coordinateSystem": "local",
-		"origin": { "lat": 55.7, "lon": 37.6 },
+		"origin": { "lat": 55.9495, "lon": 37.182 },
 		"rotationDeg": 0,
-		"basemap": { "type": "osm" }
+		"basemap": { "type": "pmtiles", "url": "/basemap/site.pmtiles" }
 	},
 	"stations": [
 		{
