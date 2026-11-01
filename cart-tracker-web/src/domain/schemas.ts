@@ -80,6 +80,12 @@ export const ScenarioSchema: z.ZodType<ScenarioFile> = z
 		schemaVersion: z.literal(1, {
 			error: 'поддерживается только schemaVersion: 1',
 		}),
+		generatedAt: z
+			.string()
+			.refine((s) => !Number.isNaN(Date.parse(s)), {
+				error: 'ожидается дата в формате ISO-8601, например 2026-10-28T09:00:00Z',
+			})
+			.optional(),
 		site: SiteSchema,
 		stations: z.array(StationSchema),
 		carts: z.array(CartSchema),

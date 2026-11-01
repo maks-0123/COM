@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "live": "node scripts/live-producer.mjs",
     "test": "vitest run"
   },
   "dependencies": {

@@ -10,7 +10,7 @@ MVP мониторинга производственных тележек: Reac
 
 | Задача | Команда |
 |---|---|
-| тесты | `npm test` (vitest, 53 теста) |
+| тесты | `npm test` (vitest, 63 теста) |
 | сборка | `npm run build` (`tsc -b && vite build`) |
 | линт | `npm run lint` (oxlint) |
 | dev-сервер | `npm run dev` (vite) |
@@ -31,14 +31,17 @@ public/data/demo-scenario.json   рабочий сценарий
 ```
 
 `sources/file/` умеет проигрывать запись: `FileReplaySource` + `ReplayClock`,
-зациклено, в тестах — ручные часы. `WebSocketSource`, `registry`, `store` и панели
-`carts/`, `playback/` — пока заглушки. `App.tsx` грузит файл напрямую, без
-`FleetRepository`.
+зациклено, в тестах — ручные часы. `PollingFileSource` раз в секунду опрашивает
+снимок (`/?source=live`), режим выбирает `registry`. `WebSocketSource`, `store`
+и панели `carts/`, `playback/` — пока заглушки. Демо-продюсер для живого режима:
+`npm run live` (пишет `public/data/live-scenario.json`).
 
 ## Контракт данных
 
 - `src/domain/types.ts` — типы; `src/domain/schemas.ts` — zod-схема `ScenarioFile`
   (`schemaVersion: 1`, поля `site`, `stations`, `carts`, `fixes`).
+- `generatedAt` — необязательное время сборки снимка (ISO-8601); его пишет
+  продюсер, поле зарезервировано под проверку свежести снимка.
 - Парсер `parseJsonScenario` не бросает исключений: возвращает `{ ok, errors }`,
   отметки сортируются по времени.
 - `docs/data-contract.md` устарел (описывает `FleetSnapshot` 1.0 с `baseStations`).

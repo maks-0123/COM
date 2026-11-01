@@ -90,6 +90,8 @@ export type PositionFix = {
 
 export type ScenarioFile = {
 	schemaVersion: 1
+	/** Когда снимок собран (ISO-8601 UTC). У записи может отсутствовать. */
+	generatedAt?: string
 	site: SiteConfig
 	stations: Station[]
 	carts: Cart[]
