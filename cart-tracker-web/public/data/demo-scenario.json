@@ -98,7 +98,7 @@
 		},
 		{
 			"cartId": "cart-02",
-			"ts": "2026-10-28T09:00:03Z",
+			"ts": "2026-10-28T09:00:08Z",
 			"position": { "x": 200, "y": 0 },
 			"accuracyM": 300,
 			"method": "cell-id",
@@ -113,6 +113,47 @@
 			"speedMps": 2.3,
 			"headingDeg": 126.87,
 			"truth": { "x": 29, "y": 29 }
+		},
+		{
+			"cartId": "cart-01",
+			"ts": "2026-10-28T09:00:05Z",
+			"position": { "x": 32, "y": 27 },
+			"accuracyM": 13,
+			"method": "rssi-multilateration",
+			"speedMps": 2.3,
+			"headingDeg": 126.87,
+			"stationsUsed": ["bs-1", "bs-2", "bs-3"],
+			"truth": { "x": 31, "y": 28 }
+		},
+		{
+			"cartId": "cart-01",
+			"ts": "2026-10-28T09:00:06Z",
+			"position": { "x": 34, "y": 25 },
+			"accuracyM": 12,
+			"method": "rssi-multilateration",
+			"speedMps": 2.3,
+			"headingDeg": 126.87,
+			"truth": { "x": 33, "y": 26 }
+		},
+		{
+			"cartId": "cart-01",
+			"ts": "2026-10-28T09:00:07Z",
+			"position": { "x": 36, "y": 24 },
+			"accuracyM": 12,
+			"method": "rssi-multilateration",
+			"speedMps": 2.3,
+			"headingDeg": 126.87,
+			"truth": { "x": 35, "y": 25 }
+		},
+		{
+			"cartId": "cart-01",
+			"ts": "2026-10-28T09:00:08Z",
+			"position": { "x": 37, "y": 22 },
+			"accuracyM": 14,
+			"method": "rssi-multilateration",
+			"speedMps": 2.2,
+			"headingDeg": 126.87,
+			"truth": { "x": 36, "y": 23 }
 		}
 	]
 }
