@@ -10,6 +10,10 @@ keys/
 node_modules/
 dist/
 
+# Генерируемые данные живого режима (пишет scripts/live-producer.mjs)
+cart-tracker-web/public/data/live-scenario.json
+cart-tracker-web/public/data/live-scenario.json.tmp
+
 # Python
 __pycache__/
 *.pyc
