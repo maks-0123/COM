@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ru">
+	<head>
+		<meta charset="utf-8" />
+		<title>Проверка встраивания карты</title>
+		<style>
+			html,
+			body {
+				height: 100%;
+				margin: 0;
+			}
+			body {
+				font-family: system-ui, sans-serif;
+				display: grid;
+				grid-template-rows: 48px 1fr;
+				background: #f8fafc;
+			}
+			header {
+				display: flex;
+				align-items: center;
+				gap: 12px;
+				padding: 0 16px;
+				background: #0f172a;
+				color: #fff;
+				font-size: 14px;
+			}
+			main {
+				display: grid;
+				grid-template-columns: 220px 1fr;
+				min-height: 0;
+			}
+			nav {
+				background: #fff;
+				border-right: 1px solid #e2e8f0;
+				padding: 12px;
+				font-size: 14px;
+			}
+			nav a {
+				display: block;
+				padding: 8px 10px;
+				border-radius: 6px;
+				color: #334155;
+				text-decoration: none;
+			}
+			nav a.active {
+				background: #e0e7ff;
+				color: #1e3a8a;
+			}
+			.content {
+				min-height: 0;
+				padding: 12px;
+				display: flex;
+				flex-direction: column;
+				gap: 8px;
+			}
+			.toolbar {
+				display: flex;
+				gap: 8px;
+				font-size: 13px;
+			}
+			.toolbar a {
+				padding: 6px 10px;
+				border: 1px solid #cbd5e1;
+				border-radius: 6px;
+				background: #fff;
+				color: #0f172a;
+				text-decoration: none;
+			}
+			iframe {
+				flex: 1;
+				width: 100%;
+				border: 0;
+				border-radius: 8px;
+				background: #fff;
+				box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+			}
+		</style>
+	</head>
+	<body>
+		<header>
+			<strong>Fake NMS</strong>
+			<span style="opacity: 0.7">проверка встраивания карты</span>
+		</header>
+		<main>
+			<nav>
+				<a href="#">Dashboard</a>
+				<a href="#">Network</a>
+				<a href="#">Equipment</a>
+				<a class="active" href="#">Тележки</a>
+				<a href="#">Subscribers</a>
+				<a href="#">Alerts</a>
+			</nav>
+			<section class="content">
+				<div class="toolbar">
+					<a href="#" data-src="./?embed=1">Embed</a>
+					<a href="#" data-src="./?embed=1&theme=dark">Тёмная</a>
+					<a href="#" data-src="./?embed=1&source=live">Живой режим</a>
+					<a href="#" data-src="./">Без embed</a>
+				</div>
+				<iframe id="map" src="./?embed=1" title="Карта тележек"></iframe>
+			</section>
+		</main>
+		<script>
+			const frame = document.getElementById('map')
+			for (const link of document.querySelectorAll('[data-src]')) {
+				link.addEventListener('click', event => {
+					event.preventDefault()
+					frame.src = link.dataset.src
+				})
+			}
+		</script>
+	</body>
+</html>

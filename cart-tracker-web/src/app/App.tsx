@@ -8,15 +8,16 @@ import type { SourceHealth } from '../sources/PositionSource'
 import { FileReplaySource } from '../sources/file/FileReplaySource'
 import { createReplayClock } from '../sources/file/ReplayClock'
 import { parseJsonScenario } from '../sources/file/parsers/parseJsonScenario'
-import { sourceModeFromUrl } from '../sources/registry'
+import { readEmbedOptions } from './embed'
+import type { EmbedTheme } from './embed'
 
 // Два режима:
-//   /            — проигрывание записанного сценария (демо без сервера);
-//   /?source=live — опрос /data/live-scenario.json раз в секунду.
-// Карта и домен одинаковы, отличается только источник за портом PositionSource.
+//   /                            — проигрывание записи (демо без сервера);
+//   /?source=live                — опрос снимка раз в секунду;
+//   /?embed=1&theme=dark&data=…  — то же самое, но для встраивания в NMS.
 
-const SCENARIO_URL = '/data/demo-scenario.json'
-const LIVE_URL = '/data/live-scenario.json'
+const SCENARIO_URL = 'data/demo-scenario.json'
+const LIVE_URL = 'data/live-scenario.json'
 const REPLAY_SPEED = 1
 
 type LoadState =
@@ -24,9 +25,15 @@ type LoadState =
 	| { status: 'error'; errors: string[] }
 	| { status: 'ready'; scenario: ScenarioFile }
 
+type ModeProps = {
+	theme: EmbedTheme
+	/** Компактный режим: меньше плашка, без лишних полей. */
+	compact: boolean
+}
+
 export default function App() {
 	const state = useScenario(SCENARIO_URL)
-	const mode = sourceModeFromUrl(window.location.search)
+	const options = readEmbedOptions(window.location.search)
 
 	if (state.status === 'loading') {
 		return <p style={{ padding: 16 }}>Загрузка {SCENARIO_URL}…</p>
@@ -36,7 +43,7 @@ export default function App() {
 			<div style={{ padding: 16 }}>
 				<h3>Не удалось открыть {SCENARIO_URL}</h3>
 				<ul>
-					{state.errors.map((e) => (
+					{state.errors.map(e => (
 						<li key={e}>{e}</li>
 					))}
 				</ul>
@@ -46,27 +53,46 @@ export default function App() {
 
 	return (
 		// Leaflet нужна явная высота контейнера, иначе карта будет высотой 0 px.
-		// position: fixed + inset: 0 растягивает блок на всё окно браузера.
-		<div style={{ position: 'fixed', inset: 0 }}>
-			{mode === 'live' ? (
-				<Live scenario={state.scenario} />
+		// position: fixed + inset: 0 растягивает блок на всё окно (или на весь iframe).
+		<div
+			style={{
+				position: 'fixed',
+				inset: 0,
+				background: options.theme === 'dark' ? '#0f172a' : '#ffffff',
+			}}
+		>
+			{options.sourceMode === 'live' ? (
+				<Live
+					scenario={state.scenario}
+					dataUrl={options.dataUrl ?? LIVE_URL}
+					theme={options.theme}
+					compact={options.embed}
+				/>
 			) : (
-				<Replay scenario={state.scenario} />
+				<Replay
+					scenario={state.scenario}
+					theme={options.theme}
+					compact={options.embed}
+				/>
 			)}
 		</div>
 	)
 }
 
 /** Проигрывает сценарий и отдаёт карте текущую отметку каждой тележки. */
-function Replay({ scenario }: { scenario: ScenarioFile }) {
-	const [positions, setPositions] = useState<Map<string, PositionFix>>(() => new Map())
+function Replay({
+	scenario,
+	theme,
+	compact,
+}: { scenario: ScenarioFile } & ModeProps) {
+	const [positions, setPositions] = useState<Map<string, PositionFix>>(
+		() => new Map(),
+	)
 	const [nowMs, setNowMs] = useState<number | null>(null)
 
 	const { site, stations, carts } = scenario
 	const { startMs, endMs } = useMemo(() => timeRange(scenario), [scenario])
 
-	// Сколько тележек давно не присылали координат: по этому числу
-	// показываем предупреждение, а сами точки гасит CartLayer.
 	const staleCount = useMemo(
 		() => (nowMs === null ? 0 : countStale(positions.values(), nowMs)),
 		[positions, nowMs],
@@ -76,15 +102,15 @@ function Replay({ scenario }: { scenario: ScenarioFile }) {
 		const clock = createReplayClock({ speed: REPLAY_SPEED })
 		const source = new FileReplaySource(scenario, clock, { loop: true })
 
-		const offFix = source.onFix((fix) => {
-			setPositions((prev) => {
+		const offFix = source.onFix(fix => {
+			setPositions(prev => {
 				const next = new Map(prev)
 				next.set(fix.cartId, fix)
 				return next
 			})
 		})
 		const offReset = source.onReset(() => setPositions(new Map()))
-		const offTick = clock.onTick((now) => setNowMs(now))
+		const offTick = clock.onTick(now => setNowMs(now))
 
 		source.start()
 
@@ -111,34 +137,42 @@ function Replay({ scenario }: { scenario: ScenarioFile }) {
 				endMs={endMs}
 				staleCount={staleCount}
 				totalCount={positions.size}
+				theme={theme}
+				compact={compact}
 			/>
 		</>
 	)
 }
 
 /** Живой режим: сценарий-подложка из демо, координаты — опросом раз в секунду. */
-function Live({ scenario }: { scenario: ScenarioFile }) {
-	const [positions, setPositions] = useState<Map<string, PositionFix>>(() => new Map())
+function Live({
+	scenario,
+	dataUrl,
+	theme,
+	compact,
+}: { scenario: ScenarioFile; dataUrl: string } & ModeProps) {
+	const [positions, setPositions] = useState<Map<string, PositionFix>>(
+		() => new Map(),
+	)
 	const [nowMs, setNowMs] = useState(() => Date.now())
 	const [health, setHealth] = useState<SourceHealth>({ ok: true })
 
 	const { site, stations, carts } = scenario
 
 	useEffect(() => {
-		const source = new PollingFileSource({ url: LIVE_URL })
+		const source = new PollingFileSource({ url: dataUrl })
 
-		const offFix = source.onFix((fix) => {
-			setPositions((prev) => {
+		const offFix = source.onFix(fix => {
+			setPositions(prev => {
 				const next = new Map(prev)
 				next.set(fix.cartId, fix)
 				return next
 			})
 		})
 		const offReset = source.onReset(() => setPositions(new Map()))
-		const offHealth = source.onHealth((next) => setHealth(next))
+		const offHealth = source.onHealth(next => setHealth(next))
 
 		source.start()
-		// Свежесть считается по стенным часам: тикаем чаще, чем приходит снимок.
 		const ticker = setInterval(() => setNowMs(Date.now()), 500)
 
 		return () => {
@@ -148,7 +182,7 @@ function Live({ scenario }: { scenario: ScenarioFile }) {
 			clearInterval(ticker)
 			source.stop()
 		}
-	}, [])
+	}, [dataUrl])
 
 	const staleCount = countStale(positions.values(), nowMs)
 
@@ -161,7 +195,13 @@ function Live({ scenario }: { scenario: ScenarioFile }) {
 				positions={positions}
 				nowMs={nowMs}
 			/>
-			<LiveStatus health={health} staleCount={staleCount} totalCount={positions.size} />
+			<LiveStatus
+				health={health}
+				staleCount={staleCount}
+				totalCount={positions.size}
+				theme={theme}
+				compact={compact}
+			/>
 		</>
 	)
 }
@@ -180,22 +220,28 @@ function timeRange(scenario: ScenarioFile): { startMs: number; endMs: number } {
 	return { startMs, endMs }
 }
 
-function badgeStyle(alert: boolean): CSSProperties {
+/** Общий стиль плашки: учитывает тему и компактный режим. */
+function badgeStyle(
+	alert: boolean,
+	theme: EmbedTheme,
+	compact: boolean,
+): CSSProperties {
+	const dark = theme === 'dark'
 	return {
 		position: 'absolute',
-		left: 12,
-		bottom: 12,
+		left: compact ? 8 : 12,
+		bottom: compact ? 8 : 12,
 		zIndex: 1000,
-		padding: '6px 10px',
-		border: `1px solid ${alert ? '#f59e0b' : '#cbd5e1'}`,
-		borderRadius: 8,
-		background: 'rgba(255, 255, 255, 0.92)',
-		color: '#0f172a',
-		font: '13px/1.4 system-ui, sans-serif',
+		padding: compact ? '4px 8px' : '6px 10px',
+		border: `1px solid ${alert ? '#f59e0b' : dark ? '#334155' : '#cbd5e1'}`,
+		borderRadius: compact ? 6 : 8,
+		background: dark ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.92)',
+		color: dark ? '#e2e8f0' : '#0f172a',
+		font: `${compact ? 12 : 13}px/1.4 system-ui, sans-serif`,
 	}
 }
 
-type StatusProps = {
+type StatusProps = ModeProps & {
 	nowMs: number | null
 	startMs: number
 	endMs: number
@@ -204,14 +250,23 @@ type StatusProps = {
 }
 
 /** Плашка записи: прогресс и предупреждение об устаревании. */
-function ReplayStatus({ nowMs, startMs, endMs, staleCount, totalCount }: StatusProps) {
+function ReplayStatus({
+	nowMs,
+	startMs,
+	endMs,
+	staleCount,
+	totalCount,
+	theme,
+	compact,
+}: StatusProps) {
 	const elapsed = nowMs === null ? 0 : Math.max(0, nowMs - startMs) / 1000
 	const total = Math.max(0, endMs - startMs) / 1000
 
 	return (
-		<div style={badgeStyle(staleCount > 0)}>
+		<div style={badgeStyle(staleCount > 0, theme, compact)}>
 			<div>
-				Запись: {elapsed.toFixed(1)} / {total.toFixed(1)} с · ×{REPLAY_SPEED}
+				Запись: {elapsed.toFixed(1)} / {total.toFixed(1)} с
+				{compact ? '' : ` · ×${REPLAY_SPEED}`}
 			</div>
 			{staleCount > 0 && (
 				<div style={{ color: '#b45309' }}>
@@ -222,14 +277,26 @@ function ReplayStatus({ nowMs, startMs, endMs, staleCount, totalCount }: StatusP
 	)
 }
 
-type LiveStatusProps = { health: SourceHealth; staleCount: number; totalCount: number }
+type LiveStatusProps = ModeProps & {
+	health: SourceHealth
+	staleCount: number
+	totalCount: number
+}
 
 /** Плашка живого режима: состояние связи и устаревание. */
-function LiveStatus({ health, staleCount, totalCount }: LiveStatusProps) {
+function LiveStatus({
+	health,
+	staleCount,
+	totalCount,
+	theme,
+	compact,
+}: LiveStatusProps) {
 	return (
-		<div style={badgeStyle(!health.ok || staleCount > 0)}>
+		<div style={badgeStyle(!health.ok || staleCount > 0, theme, compact)}>
 			<div>
-				{health.ok ? 'Живой режим · связь есть' : `Нет связи: ${health.message ?? 'ошибка'}`}
+				{health.ok
+					? 'Живой режим · связь есть'
+					: `Нет связи: ${health.message ?? 'ошибка'}`}
 			</div>
 			{staleCount > 0 && (
 				<div style={{ color: '#b45309' }}>
@@ -245,16 +312,14 @@ function useScenario(url: string): LoadState {
 	const [state, setState] = useState<LoadState>({ status: 'loading' })
 
 	useEffect(() => {
-		// AbortController отменяет загрузку, если компонент убрали со страницы
-		// раньше, чем пришёл ответ (StrictMode так делает при разработке).
 		const controller = new AbortController()
 
 		fetch(url, { signal: controller.signal })
-			.then((response) => {
+			.then(response => {
 				if (!response.ok) throw new Error(`сервер ответил ${response.status}`)
 				return response.text()
 			})
-			.then((text) => {
+			.then(text => {
 				const result = parseJsonScenario(text)
 				setState(
 					result.ok
@@ -263,7 +328,8 @@ function useScenario(url: string): LoadState {
 				)
 			})
 			.catch((e: Error) => {
-				if (e.name !== 'AbortError') setState({ status: 'error', errors: [e.message] })
+				if (e.name !== 'AbortError')
+					setState({ status: 'error', errors: [e.message] })
 			})
 
 		return () => controller.abort()
