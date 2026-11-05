@@ -1,0 +1,5 @@
+node_modules
+dist
+public/data/live-scenario.json
+.git
+*.tsbuildinfo

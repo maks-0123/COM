@@ -30,3 +30,17 @@ If you are developing a production application, we recommend enabling type-aware
 ```
 
 See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+
+## Запуск в Docker
+
+Контур без Node на хосте: `web` (собранный SPA за nginx) + `producer`
+(раз в секунду пишет живой снимок в общий том).
+
+```bash
+docker compose up --build -d   # http://localhost:8080
+```
+
+Режимы: `/` — демо-запись, `/?source=live` — живые данные продюсера.
+Файлы: `Dockerfile` (ступени `web` и `producer`), `docker/nginx.conf`
+(живой снимок отдаётся с `Cache-Control: no-store` через общий том),
+`docker/producer-entrypoint.sh` (первый старт: копирует демо в пустой том).

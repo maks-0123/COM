@@ -1,0 +1,27 @@
+# Полный контур карты без Node на хосте:
+#   web      — собранный SPA за nginx (http://localhost:8080)
+#   producer — демо-продюсер, раз в секунду пишет снимок в общий том
+# Режимы: / (демо) и /?source=live (живые данные).
+services:
+  web:
+    build:
+      context: .
+      target: web
+    ports:
+      - '8080:80'
+    volumes:
+      - live-data:/live:ro
+    depends_on:
+      - producer
+    restart: unless-stopped
+
+  producer:
+    build:
+      context: .
+      target: producer
+    volumes:
+      - live-data:/app/public/data
+    restart: unless-stopped
+
+volumes:
+  live-data:
