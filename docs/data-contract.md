@@ -1,205 +1,161 @@
-# Fleet snapshot contract — v1.0
+# Контракт данных ScenarioFile — v1
 
-**Status:** draft for review · **Applies to:** MVP 0.1 · **Canonical file:** `web/public/data/fleet.snapshot.example.json`
+**Статус:** актуален · **Канонические источники:** `cart-tracker-web/src/domain/types.ts`
+и `cart-tracker-web/src/domain/schemas.ts` (zod). Этот документ — описание для тех, кто
+пишет или принимает данные; при расхождении приоритет у кода.
+Раньше здесь был описан устаревший `FleetSnapshot` — заменён 2026-11-05.
 
-This document is the producer-facing contract for the file that the React map reads. The full plan and
-architecture are in [`Arch/MVP_Plan_and_Architecture.docx`](../Arch/MVP_Plan_and_Architecture.docx);
-this page is the short, code-adjacent version for the team that writes the file.
+## 1. Что это
 
-## 1. What the file is
-
-One JSON object, called a **snapshot**, containing the site, the base stations, and the trucks at one moment.
-The snapshot is complete, not incremental: one valid file is enough to draw the whole screen.
+Один JSON-объект — **полный снимок** сценария: площадка, станции, тележки и отметки
+положения на момент сборки. Снимок не инкрементальный: один валидный файл достаточно,
+чтобы нарисовать весь экран.
 
 ```
-producer (script / backend / simulator)
-        │  writes atomically
+продюсер (симулятор / будущий ingest)
+        │  атомарная замена (tmp + rename)
         ▼
-web/public/data/fleet.snapshot.json
-        │  GET, same origin, Cache-Control: no-store
+data/live-scenario.json (или demo-scenario.json)
+        │  GET раз в секунду, Cache-Control: no-store
         ▼
-React SPA → Zod → FleetSnapshot → Leaflet
+React SPA → zod (parseJsonScenario) → ScenarioFile → карта Leaflet
 ```
 
-The browser never reads an arbitrary path on disk. The file must be served by the same web server as the app.
+Парсер не бросает исключений: возвращает `{ ok, errors }`. Ошибка схемы отклоняет
+**весь** файл — последний хороший снимок остаётся на экране. Отметки в `fixes`
+сортируются по времени.
 
-## 2. Minimal valid example
+## 2. Минимальный пример
 
 ```json
 {
-  "schemaVersion": "1.0",
-  "generatedAt": "2026-10-28T13:38:30.000Z",
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-28T09:00:01Z",
   "site": {
-    "id": "plant-1",
-    "name": "Plant 1 — Assembly and logistics",
-    "center": { "lat": 55.7558, "lon": 37.6173 },
-    "defaultZoom": 17,
-    "timeZone": "Europe/Moscow",
-    "map": { "mode": "osm" }
+    "id": "demo-plant",
+    "name": "Демо-площадка",
+    "coordinateSystem": "local",
+    "origin": { "lat": 55.7558, "lon": 37.6173 },
+    "rotationDeg": 0,
+    "basemap": { "type": "pmtiles", "url": "basemap/site.pmtiles" }
   },
-  "baseStations": [
-    { "id": "bs-01", "name": "BS-01 / North gate", "lat": 55.7562, "lon": 37.6168, "status": "online" }
+  "stations": [
+    { "id": "bs-1", "name": "Станция 1", "position": { "x": 20, "y": 30 } }
   ],
-  "trucks": [
+  "carts": [
+    { "id": "cart-01", "name": "Тележка 1", "color": "#e74c3c", "imsi": "901700000000001" }
+  ],
+  "fixes": [
     {
-      "id": "truck-01",
-      "name": "Truck 01",
-      "lat": 55.7559,
-      "lon": 37.6171,
-      "updatedAt": "2026-10-28T13:38:28.000Z",
-      "status": "moving",
-      "accuracyM": 18.5,
-      "method": "rssi-multilateration"
+      "cartId": "cart-01",
+      "ts": "2026-10-28T09:00:01Z",
+      "position": { "x": 45, "y": 60 },
+      "accuracyM": 15,
+      "method": "rssi-multilateration",
+      "stationsUsed": ["bs-1"]
     }
   ]
 }
 ```
 
-A complete four-truck example is committed at
-[`web/public/data/fleet.snapshot.example.json`](../web/public/data/fleet.snapshot.example.json).
+Полный рабочий пример: `cart-tracker-web/public/data/demo-scenario.json` и
+фикстура `src/domain/__fixtures__/scenario.example.json` (менять только вместе
+со схемой).
 
-## 3. Top-level fields
+## 3. Поля верхнего уровня
 
-| Field | Type | Required | Rules |
+| Поле | Тип | Обязательно | Правила |
 |---|---|---|---|
-| `schemaVersion` | string | yes | `1.x` for this contract. A major mismatch is a fatal, explicit error. |
-| `generatedAt` | ISO 8601 string | yes | When the producer created this snapshot. UTC with `Z` or an explicit offset. |
-| `site` | object | yes | Site identity, map centre, zoom, optional time zone and map mode. |
-| `baseStations` | array | yes | 0 or more station objects. |
-| `trucks` | array | yes | 0 or more truck objects. Empty is valid. |
+| `schemaVersion` | number | да | только `1`; иначе файл отклонён с явной ошибкой |
+| `generatedAt` | ISO-8601 | нет | когда продюсер собрал снимок; пишет продюсер, проверка свежести — по нему |
+| `site` | object | да | см. раздел 4 |
+| `stations` | array | да | 0 и больше; `id` уникальны |
+| `carts` | array | да | 0 и больше; `id` уникальны |
+| `fixes` | array | да | 0 и больше; каждая отметка ссылается на существующий `cartId` |
 
-## 4. Site
+## 4. Площадка (site)
 
-| Field | Type | Required | Rules |
+| Поле | Тип | Обязательно | Правила |
 |---|---|---|---|
-| `id` | string | yes | Stable site ID, e.g. `plant-1`. |
-| `name` | string | yes | Shown in the header. |
-| `center.lat` | number | yes | WGS84 latitude, −90…90. |
-| `center.lon` | number | yes | WGS84 longitude, −180…180. |
-| `defaultZoom` | integer | yes | Leaflet zoom, 2…22; 16–18 for a factory. |
-| `timeZone` | IANA string | no | e.g. `Europe/Moscow`; default is the browser zone. |
-| `map` | object | no | `{ "mode": "osm" }`, `"image"`, or `"blank"`; image mode needs `imageBounds`. |
+| `id` | string | да | постоянный id площадки |
+| `name` | string | да | показывается в заголовке |
+| `coordinateSystem` | enum | да | `local` (метры от origin) или `wgs84` (градусы) |
+| `origin` | {lat, lon} | для `local` на карте | где на Земле локальная точка (0, 0); обязателен, если basemap `pmtiles`/`osm` |
+| `rotationDeg` | number | нет | поворот сетки площадки от истинного севера по часовой стрелке |
+| `basemap` | union | да | `pmtiles` (свои тайлы, нужен `url`), `osm` (нужен `tileUrl` для закрытого контура), `image` (план цеха: `url`, `widthM`, `heightM`), `none` |
 
-## 5. Base station
+**Все точки файла — в той же системе координат, что `site.coordinateSystem`.**
+Правило проверяется схемой: `{x, y}` при `local`, `{lat, lon}` при `wgs84`.
+Конвертация выполняется до записи файла, карта о ней не знает.
 
-| Field | Type | Required | Rules |
+## 5. Станция (stations[])
+
+| Поле | Тип | Обязательно | Правила |
 |---|---|---|---|
-| `id` | string | yes | Stable, unique within the snapshot, e.g. `bs-01`. |
-| `name` | string | yes | Label on the map, e.g. `BS-01 / North gate`. |
-| `lat`, `lon` | number | yes | WGS84, same CRS as trucks. |
-| `status` | enum | yes | `online`, `offline`, or `maintenance`. |
-| `heightM` | number | no | Antenna height in metres; not used for the 2D dot. |
+| `id` | string | да | постоянный, например `bs-1` |
+| `name` | string | да | подпись на карте |
+| `position` | Point | да | точка в системе площадки |
+| `heightM` | number | нет | высота антенны |
+| `enodebSerial` | string | нет | связь с eNodeB в Magma (будущее) |
+| `cellIds` | string[] | нет | связь с ячейками LTE (будущее) |
 
-## 6. Truck
+## 6. Тележка (carts[])
 
-| Field | Type | Required | Rules |
+| Поле | Тип | Обязательно | Правила |
 |---|---|---|---|
-| `id` | string | yes | Stable asset ID, unique in the snapshot. Never use an array index. |
-| `name` | string | no | Display name; fall back to `id`. |
-| `lat`, `lon` | number | yes | WGS84 position, finite and in range. |
-| `updatedAt` | ISO 8601 string | yes | When this truck was measured, not when the file was written. |
-| `status` | enum | yes | `moving`, `idle`, `offline`, or `unknown`. |
-| `accuracyM` | number | no | Estimated radius in metres, ≥ 0. Absent means unknown, not zero. |
-| `method` | string | no | `rssi-multilateration`, `timing-advance`, `cell-id`, etc. Unknown values display raw. |
-| `speedMps` | number | no | Metres per second, ≥ 0. |
-| `headingDeg` | number | no | 0 ≤ value < 360; 0 = north, clockwise. |
-| `zone` | string | no | Optional zone label for future grouping. |
-| `batteryPct` | number | no | 0…100; optional and not required for the map. |
+| `id` | string | да | постоянный, например `cart-01`; ссылка из `fixes` |
+| `name` | string | да | отображаемое имя |
+| `type` | string | нет | например `forklift`, `tugger` |
+| `color` | string | нет | цвет точки на карте |
+| `imsi` | string | нет | связь с абонентом в Magma (будущее) |
 
-## 7. Validation and failure policy
+## 7. Отметка положения (fixes[])
 
-The app validates in two stages:
+| Поле | Тип | Обязательно | Правила |
+|---|---|---|---|
+| `cartId` | string | да | тележка из `carts` |
+| `ts` | ISO-8601 | да | время отметки, UTC |
+| `position` | Point | да | позиция в системе площадки |
+| `accuracyM` | number ≥ 0 | нет | радиус неопределённости, метры; рисуется кругом |
+| `method` | enum | нет | `rssi-multilateration`, `ecid-ta`, `cell-id`, `simulated`, `unknown` — задаёт цвет точки |
+| `speedMps` | number ≥ 0 | нет | м/с |
+| `headingDeg` | number | нет | 0 ≤ v < 360; 0 — север, по часовой |
+| `stationsUsed` | string[] | нет | какие станции дали отметку |
+| `truth` | Point | нет | только симулятор/контрольные прогоны: где тележка была на самом деле |
 
-1. **Envelope** — `schemaVersion`, `generatedAt`, `site`, and the two arrays. An envelope failure rejects the
-   whole poll and keeps the previous good snapshot.
-2. **Records** — each station and truck is validated individually. An invalid record is skipped and counted;
-   the rest of the snapshot still renders.
+## 8. Свежесть и отказоустойчивость
 
-| Condition | Behaviour | What the dispatcher sees |
+- Порог устаревания отметки — `STALE_AFTER_MS` (2.5 с) в `src/domain/status.ts`,
+  под частоту опроса 1 Гц. Устаревшая отметка гасится, в плашке «Устарело: N из M».
+- Битый файл не обнуляет карту: остаётся последний хороший снимок.
+- Устаревание определяется по `generatedAt`, а не по HTTP-статусу.
+
+## 9. Атомарная запись и отдача
+
+- Пишите во временный файл в том же каталоге и делайте rename — опрос раз в
+  секунду иначе прочитает половину JSON.
+- Живой снимок отдаётся с `Cache-Control: no-store` (в Docker-контуре это
+  гарантирует nginx, см. `cart-tracker-web/docker/nginx.conf`).
+- Файл читается браузером: не кладите туда учётные данные и личные данные людей.
+  `imsi` — технический идентификатор, допустим только внутри закрытого контура.
+
+## 10. Режимы и файлы
+
+| Режим карты | URL приложения | Источник |
 |---|---|---|
-| File missing / 404 | Fatal on first load; keep previous data later | Error card with URL + Retry, or a banner |
-| Invalid JSON | Reject the poll; keep previous data | “Snapshot is not valid JSON” |
-| Envelope schema invalid | Reject the poll; keep previous data | “Contract mismatch” + first issue |
-| One invalid truck | Skip only that record | “1 record skipped” in data health |
-| Duplicate truck ID | Keep first, skip duplicate | “1 duplicate ID” |
-| `generatedAt` old | Keep data, mark stale | Amber stale banner with age |
-| Clock skew > 5 min | Keep data, warn | Warning in data health |
-| Empty `trucks` | Valid empty snapshot | “No trucks in the snapshot” |
+| запись (по умолчанию) | `/?source=replay` | `data/demo-scenario.json` |
+| живой | `/?source=live` | `data/live-scenario.json` (пишет продюсер/будущий ingest) |
+| встраивание | `/?embed=1&data=<url>` | произвольный URL снимка |
 
-## 8. Coordinates, units, time
+Параметр `data` переопределяет адрес снимка — через него карта подключается
+к будущему ingest без изменения кода.
 
-The canonical UI contract is **WGS84 latitude/longitude in decimal degrees**. Local site metres are fine
-for the positioning engine, but convert them upstream; a React component must not know the site origin.
+## 11. Чек-лист приёмки продюсера
 
-| Quantity | Unit | Convention |
-|---|---|---|
-| Latitude, longitude | decimal degrees | WGS84; 6 decimals ≈ 0.11 m |
-| Accuracy | metres | Radius, not diameter; absent = unknown |
-| Speed | metres per second | UI may convert to km/h |
-| Heading | degrees | 0 = north, clockwise, `[0, 360)` |
-| Timestamps | ISO 8601 | UTC with `Z` or an explicit offset |
-| Map circle radius | metres | Leaflet `Circle` radius |
-
-If only local ENU metres exist, convert them before writing the file:
-
-```ts
-const R = 6_378_137; // metres
-const lat = lat0 + (y / R) * (180 / Math.PI);
-const lon = lon0 + (x / (R * Math.cos((lat0 * Math.PI) / 180))) * (180 / Math.PI);
-```
-
-Document the origin and the axis convention (`x` = east, `y` = north).
-
-## 9. Atomic writes
-
-A browser polling every second will eventually read a half-written file. Write to a temporary file in the
-same directory and rename over the target:
-
-```js
-import { writeFile, rename } from 'node:fs/promises';
-
-const target = '/srv/fleet/data/fleet.snapshot.json';
-const temp = `${target}.tmp`;
-
-await writeFile(temp, JSON.stringify(snapshot, null, 2), 'utf8');
-await rename(temp, target); // atomic on POSIX, same filesystem
-```
-
-Keep `fleet.snapshot.previous.json` for diagnostics if the producer crashes.
-
-## 10. Serving and caching
-
-- Serve the file from the **same origin** as the app: `/data/fleet.snapshot.json`.
-- Send `Cache-Control: no-store` for `/data/`.
-- Do not rely on a query parameter alone; use both `cache: 'no-store'` and a cache-busting `?t=...`.
-- Use gzip for JSON; a 100-truck snapshot is ~20–30 KB.
-- Do not put secrets, IMSIs, driver names, or credentials in the file. It is readable by anyone who can
-  reach the app.
-
-## 11. Versioning
-
-- **Minor** (`1.0` → `1.1`): add an optional field, add an enum value the UI can display raw, relax a rule.
-  Old consumers keep working.
-- **Major** (`1.x` → `2.0`): rename/remove a required field, change a unit, or change a field's meaning.
-  The app refuses the file with a clear message.
-- **Additive by default.** Unknown fields are ignored; unknown `method` values are displayed raw.
-- Never reuse a field name with a new meaning. Add `zoneName` instead of changing `zone` from a string to an object.
-
-## 12. Producer acceptance checklist
-
-- [ ] The file parses as JSON and matches `schemaVersion: "1.0"`.
-- [ ] `generatedAt` and every `updatedAt` are ISO 8601 with `Z` or an offset.
-- [ ] Every truck and station has a unique, stable `id`.
-- [ ] All coordinates are WGS84 and validated against the site bounds.
-- [ ] The file is written with a temporary file + atomic rename.
-- [ ] `Cache-Control: no-store` is present in the response.
-- [ ] A 100-truck snapshot is under ~50 KB and is produced at the agreed cadence.
-- [ ] Stopping the producer makes the UI stale, not silently live.
-- [ ] Corrupting one record skips it without blanking the map.
-- [ ] The previous good snapshot is kept for diagnostics.
-
-## 13. Why JSON
-
-JSON supports the nested site/stations/trucks object, is native to JavaScript, and can be written by any
-producer. CSV is fine as an import format in the producer, but it should be converted to this contract before
-the browser sees it. JSON Lines is better for append-only streams, not for a full snapshot that is polled.
+- [ ] Файл парсится и проходит zod-схему (`parseJsonScenario` → `ok: true`).
+- [ ] Все точки в системе координат площадки.
+- [ ] `id` станций и тележек уникальны и стабильны.
+- [ ] Каждая отметка ссылается на существующую тележку.
+- [ ] Запись атомарна (tmp + rename).
+- [ ] Ответ содержит `Cache-Control: no-store`.
+- [ ] Остановка продюсера даёт «устарело/нет данных», а не мёртвую карту.
