@@ -156,3 +156,94 @@ AGW требует Linux с **двумя сетевыми портами** (S1 �
 - Ограничение логов и dev-compose: caprivm/virtualization wiki,
   «Deploy Magma Orchestrator using Docker».
 - Контекст проекта и словарь (Orc8r/AGW/NMS): `docs/handoff-context.md`.
+
+## Приложение: Mac на Apple Silicon (arm64) — опыт 2026-11-05
+
+Mac (16 ГБ ОЗУ, 113 ГБ свободно) пригоден как лаборатория, но образы
+собираются под linux/amd64 через Rosetta — сеть внутри эмуляции работает
+в ~15 раз медленнее, сборка `build.py --all` занимает часы, а не минуты.
+Клон со всеми правками ниже уже лежит в `~/magma` (не переключайте ветку —
+файлы не закоммичены).
+
+### Что пришлось пропатчить (уже сделано в ~/magma)
+
+Пакетные базы образов 2021–2022 годов ссылаются на пакеты, вычеркнутые
+из зеркал; свежий `apt-get update` не спасает:
+
+| Файл | Правка |
+|---|---|
+| `orc8r/cloud/docker/nginx/Dockerfile` | `security.debian.org` → `archive.debian.org`, чистка `apt/lists`, `Check-Valid-Until=false` |
+| `orc8r/cloud/docker/controller/Dockerfile` | `archive/security.ubuntu.com` → `old-releases.ubuntu.com` (xenial EOL), то же про Valid-Until — в двух ступенях |
+| `orc8r/cloud/docker/fluentd_daemon/Dockerfile` | как nginx (debian) |
+
+Шаблон правки: перед `apt-get update` вставить
+`sed -i 's|<старое зеркало>|<архивное>|g' /etc/apt/sources.list`,
+`rm -rf /var/lib/apt/lists/*` и `apt-get -o Acquire::Check-Valid-Until=false update`.
+
+### Порядок работы на Mac
+
+```bash
+# все команды из каталога
+cd ~/magma/orc8r/cloud/docker
+
+# собрать с ограничением параллелизма (иначе apt в эмуляции отваливается по таймауту)
+COMPOSE_PARALLEL_LIMIT=2 ./build.py --all
+# падает на каком-то образе? читаем ошибку, патчим его Dockerfile, повторяем
+# (кеш сохраняет прогресс, повторная сборка продолжается с того же места)
+
+# контроль готовых образов
+docker images | grep orc8r
+```
+
+Дальше как в Фазах 1–2 основного ранбука: `./run.py` (метрики не нужны),
+NMS из `~/magma/nms` (правка `proxy_ssl.conf`: `listen 443 ssl;` вместо
+`listen 443;` + `ssl on;`), `bash scripts/dev_setup.sh`. Для имён
+`magma.test` вместо hosts-файла удобнее `sudo sh -c 'echo "127.0.0.1
+magma.test api.magma.test nms.magma.test" >> /etc/hosts'`.
+
+### Проверенные факты
+
+- `docker run --rm --platform linux/amd64 alpine uname -m` → `x86_64`:
+  эмуляция работает.
+- Сборка `build.py --all` (после патчей зеркал и gem'ов) завершается успехом;
+  образы: orc8r-nginx, orc8r-controller, orc8r-fluentd, orc8r-test (~4 ГБ суммарно).
+- NMS собирается из `~/magma/nms` (`docker-compose build` — долго, вести
+  по частям; правка `proxy_ssl.conf`: одна строка `listen 443 ssl;`).
+- **Состояние на 2026-11-06: стенд поднят и проверен end-to-end**
+  (backend + NMS + северный API, создана сеть `test`).
+
+### Подводные камни запуска (все пройдены)
+
+1. **postgres.** В compose образ не закреплён (`image: postgres`) → тянется
+   latest, несовместимый с существующим томом `pgdata`. Лечение: пин
+   `image: postgres:13` (строка 53 docker-compose.yml), `run.py --down`,
+   `docker volume rm orc8r_pgdata`, `run.py` заново.
+2. **Регистрация сертификатов.** Контейнер controller в TEST_MODE сам генерирует
+   свою пару `admin_operator` в `/var/opt/magma/certs` и регистрирует её в БД.
+   Хостовый `~/secrets/certs/admin_operator.pem` — ДРУГОЙ сертификат, его SN
+   в БД нет → 401 «unknown client certificate SN». Брать нужно контейнерную пару:
+   `docker cp orc8r-controller-1:/var/opt/magma/certs/admin_operator.pem .`
+   (и `.key.pem`). Если БД пересоздавалась, внутри контейнера перезапустить
+   `create_test_controller_certs`.
+3. **Префикс API.** Северный REST — `https://api.magma.test:9443/magma/v1/...`
+   (не `/v1/...`). Порты: 9443 — REST с клиентским сертификатом; 8443/8444 —
+   gRPC для шлюзов (браузеру не нужны).
+4. **NMS.** Вход: `https://nms.magma.test`, пользователь `admin@magma.test`,
+   пароль `password1234` (создаёт `nms/scripts/dev_setup.sh`). 403
+   `USER_NOT_LOGGED_IN` — это страница логина, не ошибка.
+5. **Имена хостов** (`magma.test`, `api.magma.test`, `nms.magma.test`) →
+   `/etc/hosts` на 127.0.0.1; sudo нужен.
+
+### Проверка работоспособности
+
+```bash
+# API: список сетей (должен вернуть ["test"])
+curl -sk --cert container_admin_operator.pem --key container_admin_operator.key.pem \
+  https://api.magma.test:9443/magma/v1/networks
+
+# NMS: страница логина (должна открыться в браузере)
+open https://nms.magma.test
+```
+
+- AGW на Mac не поднимается принципиально (нужен Linux с двумя NIC) —
+  Mac годится только для Orc8r + NMS.
