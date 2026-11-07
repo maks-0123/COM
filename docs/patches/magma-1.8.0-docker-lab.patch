@@ -1,0 +1,137 @@
+diff --git a/nms/docker-compose.yml b/nms/docker-compose.yml
+index e11bbfd..6080df8 100644
+--- a/nms/docker-compose.yml
++++ b/nms/docker-compose.yml
+@@ -16,6 +16,7 @@ services:
+     image: nginx
+     ports:
+       - "443:443"
++      - "80:80"
+     volumes:
+       - ./docker/docker_ssl_proxy:/etc/nginx/conf.d
+     depends_on:
+diff --git a/nms/docker/docker_ssl_proxy/proxy_ssl.conf b/nms/docker/docker_ssl_proxy/proxy_ssl.conf
+index cbbfe01..2583ac2 100644
+--- a/nms/docker/docker_ssl_proxy/proxy_ssl.conf
++++ b/nms/docker/docker_ssl_proxy/proxy_ssl.conf
+@@ -1,6 +1,5 @@
+ server {
+-  listen 443;
+-  ssl on;
++  listen 443 ssl;
+   ssl_certificate /etc/nginx/conf.d/cert.pem;
+   ssl_certificate_key /etc/nginx/conf.d/key.pem;
+   location / {
+diff --git a/orc8r/cloud/docker/controller/Dockerfile b/orc8r/cloud/docker/controller/Dockerfile
+index 5ce75d4..8ee9eeb 100644
+--- a/orc8r/cloud/docker/controller/Dockerfile
++++ b/orc8r/cloud/docker/controller/Dockerfile
+@@ -14,7 +14,9 @@ ENV PATH ${PATH}:${GOBIN}:${GOPATH}/bin
+ ENV MAGMA_ROOT /src/magma
+ 
+ # Apt runtime deps
+-RUN apt-get update && apt-get install -y \
++RUN rm -rf /var/lib/apt/lists/* \
++  && apt-get -o Acquire::Check-Valid-Until=false -o Acquire::Retries=5 -o Acquire::http::Timeout=120 update \
++  && apt-get install -y \
+   bzr \
+   curl \
+   gcc \
+@@ -28,7 +30,7 @@ RUN apt-get update && apt-get install -y \
+ WORKDIR /usr/local
+ ARG GOLANG_VERSION="1.18.3"
+ RUN GO_TARBALL="go${GOLANG_VERSION}.linux-amd64.tar.gz" \
+- && curl https://artifactory.magmacore.org/artifactory/generic/${GO_TARBALL} --remote-name --location \
++ && curl https://go.dev/dl/${GO_TARBALL} --remote-name --location \
+  && tar -xzf ${GO_TARBALL} \
+  && ln -s /usr/local/go/bin/go /usr/local/bin/go \
+  && rm ${GO_TARBALL}
+@@ -88,7 +90,9 @@ RUN . /etc/profile.d/env.sh && make build
+ FROM ubuntu:xenial
+ 
+ # Apt runtime deps
+-RUN apt-get update && apt-get install -y \
++RUN rm -rf /var/lib/apt/lists/* \
++  && apt-get -o Acquire::Check-Valid-Until=false -o Acquire::Retries=5 -o Acquire::http::Timeout=120 update \
++  && apt-get install -y \
+   daemontools \
+   netcat \
+   openssl \
+diff --git a/orc8r/cloud/docker/docker-compose.yml b/orc8r/cloud/docker/docker-compose.yml
+index 79aab9a..b0addcc 100644
+--- a/orc8r/cloud/docker/docker-compose.yml
++++ b/orc8r/cloud/docker/docker-compose.yml
+@@ -50,7 +50,7 @@ services:
+   # Non-core essential services
+ 
+   postgres:
+-    image: postgres
++    image: postgres:13
+     # Default is 64mb
+     # Ref: https://stackoverflow.com/questions/30210362/how-to-increase-the-size-of-the-dev-shm-in-docker-container
+     shm_size: '256mb'
+diff --git a/orc8r/cloud/docker/fluentd/Dockerfile b/orc8r/cloud/docker/fluentd/Dockerfile
+index c87b23e..a92e0f1 100644
+--- a/orc8r/cloud/docker/fluentd/Dockerfile
++++ b/orc8r/cloud/docker/fluentd/Dockerfile
+@@ -1,8 +1,10 @@
+ FROM fluent/fluentd:v1.14.6-debian-1.0
+ USER root
+-RUN gem install \
++RUN gem install multi_json -v 1.15.0 --no-document \
++ && gem install excon -v 1.2.5 --no-document \
++ && gem install \
+     elasticsearch:7.13.0 \
+     fluent-plugin-elasticsearch:5.2.1 \
+     fluent-plugin-multi-format-parser:1.0.0 \
+-    --no-document
++    --no-document --minimal-deps
+ USER fluent
+diff --git a/orc8r/cloud/docker/fluentd_daemon/Dockerfile b/orc8r/cloud/docker/fluentd_daemon/Dockerfile
+index be44d10..235f547 100644
+--- a/orc8r/cloud/docker/fluentd_daemon/Dockerfile
++++ b/orc8r/cloud/docker/fluentd_daemon/Dockerfile
+@@ -10,7 +10,9 @@ ENV FLUENTD_DISABLE_BUNDLER_INJECTION 1
+ 
+ COPY Gemfile* /fluentd/
+ RUN buildDeps="sudo make gcc g++ libc-dev libffi-dev" \
+-  && apt-get update \
++  && sed -i 's/security.debian.org/debian-security/archive.debian.org/debian-security/g' /etc/apt/sources.list \
++  && rm -rf /var/lib/apt/lists/* \
++  && apt-get -o Acquire::Check-Valid-Until=false update \
+   && apt-get upgrade -y \
+   && apt-get install \
+     -y --no-install-recommends \
+diff --git a/orc8r/cloud/docker/fluentd_forward/Dockerfile b/orc8r/cloud/docker/fluentd_forward/Dockerfile
+index c87b23e..a92e0f1 100644
+--- a/orc8r/cloud/docker/fluentd_forward/Dockerfile
++++ b/orc8r/cloud/docker/fluentd_forward/Dockerfile
+@@ -1,8 +1,10 @@
+ FROM fluent/fluentd:v1.14.6-debian-1.0
+ USER root
+-RUN gem install \
++RUN gem install multi_json -v 1.15.0 --no-document \
++ && gem install excon -v 1.2.5 --no-document \
++ && gem install \
+     elasticsearch:7.13.0 \
+     fluent-plugin-elasticsearch:5.2.1 \
+     fluent-plugin-multi-format-parser:1.0.0 \
+-    --no-document
++    --no-document --minimal-deps
+ USER fluent
+diff --git a/orc8r/cloud/docker/nginx/Dockerfile b/orc8r/cloud/docker/nginx/Dockerfile
+index 058b9b7..bde6d90 100644
+--- a/orc8r/cloud/docker/nginx/Dockerfile
++++ b/orc8r/cloud/docker/nginx/Dockerfile
+@@ -1,7 +1,9 @@
+ FROM nginx:1.21
+ 
+-RUN apt-get update && \
+-  apt-get install -y python3-pip daemontools
++RUN sed -i 's|security.debian.org/debian-security|archive.debian.org/debian-security|g' /etc/apt/sources.list \
++  && rm -rf /var/lib/apt/lists/* \
++  && apt-get -o Acquire::Check-Valid-Until=false update \
++  && apt-get install -y python3-pip daemontools
+ RUN pip3 install --no-cache-dir PyYAML jinja2
+ 
+ RUN mkdir -p /var/opt/magma/envdir
