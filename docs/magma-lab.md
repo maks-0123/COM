@@ -151,6 +151,28 @@ open http://magma-test.nms.magma.test
    `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/secrets/certs/rootCA.pem`
    (без sudo сертификат добавляется в login keychain, но Chromium может не
    увидеть доверие). Для лабы достаточно HTTP-варианта из камня №6.
+10. **Создание абонента: POST, а не PUT.** `PUT /lte/{id}/subscribers/{imsi}`
+    обновляет ТОЛЬКО существующего (иначе 404 `Not Found`), создание —
+    пакетное: `POST /lte/{id}/subscribers` с телом-массивом mutable_subscriber.
+    Ответ 201. Абонент появляется в `cfg_entities` (type `subscriber`).
+11. **Секреты LTE строго 16 байт в base64.** `auth_key`/`auth_opc` —
+    16 байт, в JSON это base64 (**24 символа**). 32 hex-символа — это уже
+    24 байта: валидация obsidian отвечает `400` с пустым телом `{}`
+    (сообщение об ошибке теряется — баг Magma). Ключи генерировать:
+    `openssl rand 16 | base64`. До абонентов сеть должна иметь cellular-конфиг
+    (камень ниже), иначе тот же пустой 400.
+12. **Cellular-конфиг создаётся только целиком.** `PUT /lte/{id}/cellular`
+    (не /epc и не /ran по отдельности — они 400 «No cellular network config
+    found», если конфига ещё нет). Обязательные поля: `ran.fdd_config.earfcndl`
+    + `earfcnul` (вложенный объект! плоские `earfcndl` молча не проходят),
+    `epc.mcc/mnc/tac/lte_auth_amf/lte_auth_op/hss_relay_enabled/
+    gx_gy_relay_enabled`. Образец — `NewDefaultFDDNetworkConfig()` в
+    `lte/cloud/go/services/lte/obsidian/models/defaults.go`. Ошибки obsidian
+    бывают двух видов: развёрнутые `validation failure list` (swagger-слой)
+    и пустые `{}` (ValidateModel в handler'е — копать код модели).
+13. **id абонента с префиксом `IMSI`.** Паттерн `^(IMSI\d{10,15})$` —
+    буквально буквы IMSI + 10–15 цифр, например `IMSI001010000000001`
+    (тестовый PLMN 001/01 из камня №12).
 
 ## Фаза 2. Учимся (текущая цель)
 
@@ -158,9 +180,10 @@ open http://magma-test.nms.magma.test
 
 1. **NMS:** дашборды сети `test` (готово). NMS не модифицируем — это
    чужой интерфейс (принцип из handoff-context).
-2. **Абоненты:** добавить подписчиков (IMSI) через NMS или
-   `POST /magma/v1/lte/test/subscribers`. IMSI совпадают с `carts[].imsi`
-   из контракта карты — заложить реальные диапазоны сразу.
+2. **Абоненты:** созданы через `POST /magma/v1/lte/test/subscribers`
+   (камни №10–13), видны в `cfg_entities` и в NMS → Subscribers. IMSI —
+   тестовый диапазон `00101…`; при связывании с картой `carts[].imsi`
+   схемы — поменять MCC/MNC в EPC-конфиге под реальный план.
 3. **Северный API:** NMS — тонкая оболочка над REST. Погонять curl
    против `/magma/v1/...` (примеры выше) — именно через этот API в
    будущем подключаются собственные сервисы; затем переписать на Python.
