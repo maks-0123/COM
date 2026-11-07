@@ -233,6 +233,31 @@ magma.test api.magma.test nms.magma.test" >> /etc/hosts'`.
    `USER_NOT_LOGGED_IN` — это страница логина, не ошибка.
 5. **Имена хостов** (`magma.test`, `api.magma.test`, `nms.magma.test`) →
    `/etc/hosts` на 127.0.0.1; sudo нужен.
+6. **Просроченный сертификат nginx-proxy NMS.** В репозитории зашит демо-серт
+   `CN=localhost` с валидностью 2018–2019 → браузер блокирует страницу
+   (`ERR_CERT_AUTHORITY_INVALID`, белый экран со спиннером). Лечение: свой серт
+   от лабораторного rootCA (`~/secrets/certs/rootCA.pem`) с SAN
+   `magma-test.nms.magma.test` в `nms/docker/docker_ssl_proxy/cert.pem` +
+   `key.pem`, и второй server-блок на порту 80 (`http.conf` рядом, плюс
+   проброс `"80:80"` в `nms/docker-compose.yml`). Итог: NMS открывается по
+   `http://magma-test.nms.magma.test` без сертификатных предупреждений.
+   Команды генерации сертификата — в `docs/patches/README.md`.
+7. **Организация NMS определяется поддоменом.** middleware берёт первую метку
+   хоста как имя организации: только `magma-test.nms.magma.test` → организация
+   `magma-test` (там admin). Заход по `localhost` попадает в организацию
+   `localhost` → «Invalid organization» или чужой пароль. В `/etc/hosts` нужна
+   и строка `127.0.0.1 magma-test.nms.magma.test`.
+8. **Сеть без типа = вечный спиннер дашборда NMS.** Если сеть создана «голой»
+   (`POST /networks` без конфигов), NMS после логина дёргает
+   `GET /networks/{id}/type`, получает `""` и висит на спиннере, не делая
+   ни одного запроса дальше; в логах magmalte тишина. Лечение:
+   `PUT /magma/v1/networks/test/type` с телом `"lte"` → 204, после этого
+   дашборд отрисовывается. Проверка: `GET /magma/v1/lte/test` должен вернуть
+   200 (в теле `cellular:null`, конфиги EPC/RAN — следующим шагом).
+9. **Доверие rootCA.** Для чистого HTTPS: `sudo security add-trusted-cert -d
+   -r trustRoot -k /Library/Keychains/System.keychain ~/secrets/certs/rootCA.pem`
+   (без sudo добавляется в login keychain, но Chromium-вкладки могут не увидеть
+   доверие). Для лабы достаточно HTTP-варианта из п. 6.
 
 ### Проверка работоспособности
 
@@ -241,8 +266,12 @@ magma.test api.magma.test nms.magma.test" >> /etc/hosts'`.
 curl -sk --cert container_admin_operator.pem --key container_admin_operator.key.pem \
   https://api.magma.test:9443/magma/v1/networks
 
-# NMS: страница логина (должна открыться в браузере)
-open https://nms.magma.test
+# тип сети зарегистрирован (должен вернуть "lte")
+curl -sk --cert container_admin_operator.pem --key container_admin_operator.key.pem \
+  https://api.magma.test:9443/magma/v1/networks/test/type
+
+# NMS: страница логина (должна открыться в браузере), вход admin@magma.test / password1234
+open http://magma-test.nms.magma.test
 ```
 
 - AGW на Mac не поднимается принципиально (нужен Linux с двумя NIC) —
